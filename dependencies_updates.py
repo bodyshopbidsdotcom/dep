@@ -1,23 +1,282 @@
 # Example usage:
-# python dependencies_updates.py -r "required value" positional_argument
+# python dependencies_updates.py
+# python dependencies_updates.py > result.txt
+# python dependencies_updates.py -c 2022-10-24 > result.txt
+# python dependencies_updates.py -c 2022-10-03 -s > result.txt
+# DEBUG=1 python dependencies_updates.py
+
 import argparse
+from genericpath import isdir, isfile
 import sys
+import requests
+import os
+import re
+import json
+import urllib.parse
+import posixpath
+import datetime
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('-r', '--required-argument', required=True, help='Description of required argument')
-  parser.add_argument('-d', '--defaulted-argument', default='default value', help='Description of defaulted argument')
-  parser.add_argument('positional_argument', help='Description of the positional argument')
+  parser.add_argument('-c', '--compare-to', help='Previous result to compare this run against')
+  parser.add_argument('-s', '--strict', default=False, action='store_true', help='Only look at dependencies in the follow_dependencies config list')
+  sys.exit(DependencyUpdates().run(parser.parse_args()))
 
-  sys.exit(dependencies_updates(parser.parse_args()))
+def parse_gemfile_content(gemfile_lock_content):
+  ret = {}
 
-def dependencies_updates(args):
-  print('You have successfully created the new snippet "dependencies_updates"!')
-  print('--------------------------------------------------------')
-  print('required_argument: [%s]' % args.required_argument)
-  print('defaulted_argument: [%s]' % args.defaulted_argument)
-  print('positional_argument: [%s]' % args.positional_argument)
-  return 0
+  current_section = None
+  previous_level = None
+  for line in gemfile_lock_content.split('\n'):
+    line_stripped = line.strip()
+
+    if len(line_stripped) <= 0:
+      continue
+
+    if re.search(r'^[^\s]', line):
+      current_section = line_stripped
+      previous_level = ''
+      continue
+
+    # Ensures going at most 1 layer deep into a section
+    if previous_level not in ['', re.search(r'^(\s+)', line).group(1)]:
+      continue
+
+    if current_section is None:
+      continue
+
+    result = None
+    if current_section == 'GEM':
+      result = re.search(r'^(\s+)([^\s]+)\s\(((?:\d\.?)+)\)\s*$', line)
+    elif current_section == 'RUBY VERSION':
+      result = re.search(r'^(\s+)(ruby)\s+((?:\d\.?)+).*?$', line)
+
+    if result:
+      previous_level = result.group(1)
+      dependency_name = result.group(2)
+      version_parts = [int(version_part) for version_part in result.group(3).strip('.').split('.')]
+      if dependency_name in ret:
+        print(f'WARNING! looks like {dependency_name} appears twice in the Gemfile!')
+      ret[dependency_name] = version_parts
+
+  return ret
+
+def parse_ruby_version_content(ruby_version_content):
+  result = re.search(r'^\s*(?:ruby\-)?((?:\d\.?)+).*?$', ruby_version_content, re.MULTILINE)
+  if result is not None:
+    version_parts = [int(version_part) for version_part in result.group(1).strip('.').split('.')]
+    while len(version_parts) < 3:
+      version_parts.append(0)
+    return version_parts
+  else:
+    return None
+
+'''
+[1, 0, 0]
+[2, 0, 0]
+0
+
+[1, 0, 0]
+[1, 1, 0]
+1
+
+[1, 0, 0]
+[1, 0, 1]
+2
+
+[1, 2, 3]
+[1, 2, 3, 4]
+3
+
+[1, 2]
+[1, 2, 3, 4]
+2
+'''
+def compare_version_parts(version_parts_1, version_parts_2):
+  if version_parts_1 == version_parts_2:
+    return -1
+
+  idx = 0
+  max_len = min(len(version_parts_1), len(version_parts_2))
+  while idx < max_len:
+    if version_parts_1[idx] != version_parts_2[idx]:
+      return idx
+    idx += 1
+
+  return idx
+
+class DependencyUpdates:
+  def __init__(self):
+    super(self.__class__) # TODO is this necessary? update GemfileLockParser if so.
+    self._config_dict = None
+    self._default_branches = {}
+    self._github_token = os.environ.get('GITHUB_TOKEN')
+
+    config_file = 'config.json'
+    if not os.path.isfile(config_file):
+      config_file = 'config_sample.json'
+
+    self._config_dict = None
+    with open(config_file, 'r') as config_file:
+      self._config_dict = json.load(config_file)
+
+  def _gh_pull_file(self, repo_shortname, filepath):
+    if len(os.environ.get('DEBUG', '')) > 0:
+      directory = os.path.join(self._config_dict['debug']['repos_dir'], repo_shortname)
+      if os.path.isdir(directory):
+        with open(os.path.join(directory, filepath), 'r') as file:
+          return file.read()
+      else:
+        return ''
+
+    url = urllib.parse.urljoin('https://raw.githubusercontent.com', posixpath.join(
+      self._config_dict['owner'],
+      repo_shortname,
+      self._default_branch(repo_shortname),
+      filepath
+    ))
+
+    return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'}).text or ''
+
+  def _gh_api_call(self, path):
+    url = urllib.parse.urljoin('https://api.github.com', path)
+    return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'})
+
+  def _default_branch(self, repo_shortname):
+    if repo_shortname not in self._default_branches:
+      owner = self._config_dict['owner']
+      response = self._gh_api_call(f'/repos/{owner}/{repo_shortname}')
+      self._default_branches[repo_shortname] = response.json()['default_branch']
+
+    return self._default_branches[repo_shortname]
+
+  def _version_for_ruby(self, repo_shortname):
+    repo_config = self._config_dict['repos'][repo_shortname]
+
+    version_string_regexes = [
+      ['Gemfile.lock', r'^\s{3}ruby\s+((?:\d\.?)+).*?$'],
+      ['.ruby-version', r'^\s*((?:\d\.?)+).*?$']
+    ]
+
+    for version_string_regex in version_string_regexes:
+      location = posixpath.join(repo_config.get('gemfile_dir', ''), version_string_regex[0]).strip('/')
+      file_content = self._gh_pull_file(repo_shortname, location) or ''
+      result = re.search(version_string_regex[1], file_content, re.MULTILINE)
+      if result is not None:
+        version_parts = [int(version_part) for version_part in result.group(1).strip('.').split('.')]
+        while len(version_parts) < 3:
+          version_parts.append(0)
+
+        return version_parts
+
+    return None
+
+  def _version_for_gem(self, repo_shortname, gem_name):
+    pass
+
+  '''
+  Returns the version for `dependency_name` that `repo_shortname` uses
+  IMPORTANT: Updates the `result_store` hash if it's present
+  '''
+  def version(self, repo_shortname, dependency_name, result_store = None):
+    version = None
+
+    if dependency_name == 'ruby':
+      version = self._version_for_ruby(repo_shortname)
+    else:
+      version = self._version_for_gem(repo_shortname, dependency_name)
+
+    if version is not None and result_store is not None:
+      if repo_shortname not in result_store:
+        result_store[repo_shortname] = {}
+      result_store[repo_shortname][dependency_name] = version
+
+    return version
+
+  def build_new_result(self):
+    result = {}
+
+    for repo_shortname, repo_config in self._config_dict['repos'].items():
+      gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), 'Gemfile.lock').strip('/')
+      dependencies_dict = parse_gemfile_content(self._gh_pull_file(repo_shortname, gemfile_location))
+
+      if 'ruby' not in dependencies_dict:
+        ruby_version_location = posixpath.join(repo_config.get('gemfile_dir', ''), '.ruby-version').strip('/')
+        ruby_version_parts = parse_ruby_version_content(self._gh_pull_file(repo_shortname, ruby_version_location))
+        if ruby_version_parts:
+          dependencies_dict['ruby'] = ruby_version_parts
+
+      result[repo_shortname] = dependencies_dict
+
+    today_str = datetime.date.today().strftime('%Y-%m-%d')
+    outputfile_path = f'results/{today_str}.json'
+    with open(outputfile_path, 'w') as outfile:
+      outfile.write(json.dumps(result, indent=2))
+    print(f'Wrote: {outputfile_path}')
+
+    return result
+
+  def compare_results(self, result_old, result_new, strict = False):
+    print_message_types = [
+      'Major',
+      'Minor',
+      'Patch',
+      'Old',
+      'Added',
+      'Removed'
+    ]
+
+    for repo_shortname, repo_config in self._config_dict['repos'].items():
+      if (repo_shortname not in result_new) or (repo_shortname not in result_old):
+        continue
+
+      print_messages = {}
+      for print_message_type in print_message_types:
+        print_messages[print_message_type] = []
+
+      for dependency_name in set(list(result_new[repo_shortname].keys()) + list(result_old[repo_shortname].keys())):
+        if strict and dependency_name not in self._config_dict.get('follow_dependencies', []):
+          continue
+
+        if dependency_name not in result_old[repo_shortname]:
+          print_messages['Added'].append(f'[{repo_shortname}] Added dependency: {dependency_name}')
+          continue
+
+        if dependency_name not in result_new[repo_shortname]:
+          print_messages['Removed'].append(f'[{repo_shortname}] Removed dependency: {dependency_name}')
+          continue
+
+        if result_new[repo_shortname][dependency_name] == result_old[repo_shortname][dependency_name]:
+          continue
+
+        diff = compare_version_parts(result_new[repo_shortname][dependency_name], result_old[repo_shortname][dependency_name])
+        diff_str = {0: 'Major', 1: 'Minor', 2: 'Patch'}.get(diff, 'Old')
+        from_str = '.'.join([str(part) for part in result_old[repo_shortname][dependency_name]])
+        to_str = '.'.join([str(part) for part in result_new[repo_shortname][dependency_name]])
+        print_messages[diff_str].append(f'[{repo_shortname}] {diff_str} version update for {dependency_name}: {from_str} -> {to_str}')
+
+      for print_message_type in print_message_types:
+        for print_message in print_messages[print_message_type]:
+          print(print_message)
+
+  def run(self, args):
+    result_old = None
+
+    if len(args.compare_to or '') > 0:
+      prev_result_basenames = os.listdir('results')
+      if f'{args.compare_to}.json' in prev_result_basenames:
+        with open(f'results/{args.compare_to}.json', 'r') as file:
+          result_old = json.load(file)
+      else:
+        print('Possible options for compare-to argument: ' + ', '.join(prev_result_basenames))
+        return 1
+
+    result_new = self.build_new_result()
+
+    if result_old is not None:
+      self.compare_results(result_old, result_new, args.strict)
+
+    return 0
 
 if __name__ == "__main__":
   run()

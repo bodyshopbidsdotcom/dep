@@ -1,0 +1,31 @@
+{
+  "owner": "bodyshopbidsdotcom",
+  "follow_dependencies": [
+    "rails",
+    "ruby"
+  ],
+  "repos": {
+    "snapsheet-standard-web": { "gemfile_dir": "/test-features" },
+    "viceroy": { "gemfile_dir": "/ruby" },
+    "authenticator": {},
+    "authenticator-client-sdk": {},
+    "dispatch": {},
+    "guidelines": {},
+    "hermes": {},
+    "Mammon": {},
+    "polyglot": {},
+    "snapsheet": {},
+    "snapsheet-tx": {},
+    "snapsheet-url-shortener": {},
+    "Squire": {},
+    "synthesis": {},
+    "system-tests": {},
+    "tinker": {},
+    "vice-backend": {},
+    "vice-gateway": {},
+    "vice-metrics": {}
+  },
+  "debug": {
+    "repos_dir": "/Users/santiago"
+  }
+}
