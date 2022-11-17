@@ -159,7 +159,7 @@ class DependencyUpdates:
       self._config_dict = json.load(config_file)
 
   def gh_pull_file(self, repo_shortname, filepath):
-    if len(os.environ.get('DEBUG', '')) > 0:
+    if len(os.environ.get('DEBUG', '')) > 0 or self._config_dict.get('force_debug_mode', False):
       directory = os.path.join(self._config_dict['debug']['repos_dir'], repo_shortname)
       if os.path.isdir(directory):
         with open(os.path.join(directory, filepath), 'r') as file:

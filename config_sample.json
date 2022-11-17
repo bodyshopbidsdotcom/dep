@@ -1,5 +1,6 @@
 {
   "owner": "bodyshopbidsdotcom",
+  "force_debug_mode": false,
   "follow_dependencies": [
     "rails",
     "ruby"
