@@ -141,7 +141,7 @@ class DependencyUpdates:
     with open(config_file, 'r') as config_file:
       self._config_dict = json.load(config_file)
 
-  def _gh_pull_file(self, repo_shortname, filepath):
+  def gh_pull_file(self, repo_shortname, filepath):
     if len(os.environ.get('DEBUG', '')) > 0:
       directory = os.path.join(self._config_dict['debug']['repos_dir'], repo_shortname)
       if os.path.isdir(directory):
@@ -153,80 +153,35 @@ class DependencyUpdates:
     url = urllib.parse.urljoin('https://raw.githubusercontent.com', posixpath.join(
       self._config_dict['owner'],
       repo_shortname,
-      self._default_branch(repo_shortname),
+      self.gh_default_branch(repo_shortname),
       filepath
     ))
 
     return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'}).text or ''
 
-  def _gh_api_call(self, path):
+  def gh_api_call(self, path):
     url = urllib.parse.urljoin('https://api.github.com', path)
     return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'})
 
-  def _default_branch(self, repo_shortname):
+  def gh_default_branch(self, repo_shortname):
     if repo_shortname not in self._default_branches:
       owner = self._config_dict['owner']
-      response = self._gh_api_call(f'/repos/{owner}/{repo_shortname}')
+      response = self.gh_api_call(f'/repos/{owner}/{repo_shortname}')
       self._default_branches[repo_shortname] = response.json()['default_branch']
 
     return self._default_branches[repo_shortname]
-
-  def _version_for_ruby(self, repo_shortname):
-    repo_config = self._config_dict['repos'][repo_shortname]
-
-    version_string_regexes = [
-      ['Gemfile.lock', r'^\s{3}ruby\s+((?:\d\.?)+).*?$'],
-      ['.ruby-version', r'^\s*((?:\d\.?)+).*?$']
-    ]
-
-    for version_string_regex in version_string_regexes:
-      location = posixpath.join(repo_config.get('gemfile_dir', ''), version_string_regex[0])
-      location = location.strip('/')
-      file_content = self._gh_pull_file(repo_shortname, location) or ''
-      result = re.search(version_string_regex[1], file_content, re.MULTILINE)
-      if result is not None:
-        version_parts_str_list = result.group(1).strip('.').split('.')
-        version_parts = [int(version_part) for version_part in version_parts_str_list]
-        while len(version_parts) < 3:
-          version_parts.append(0)
-
-        return version_parts
-
-    return None
-
-  def _version_for_gem(self, repo_shortname, gem_name):
-    pass
-
-  '''
-  Returns the version for `dependency_name` that `repo_shortname` uses
-  IMPORTANT: Updates the `result_store` hash if it's present
-  '''
-  def version(self, repo_shortname, dependency_name, result_store = None):
-    version = None
-
-    if dependency_name == 'ruby':
-      version = self._version_for_ruby(repo_shortname)
-    else:
-      version = self._version_for_gem(repo_shortname, dependency_name)
-
-    if version is not None and result_store is not None:
-      if repo_shortname not in result_store:
-        result_store[repo_shortname] = {}
-      result_store[repo_shortname][dependency_name] = version
-
-    return version
 
   def build_new_result(self):
     result = {}
 
     for repo_shortname, repo_config in self._config_dict['repos'].items():
       gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), 'Gemfile.lock')
-      gemfile_content = self._gh_pull_file(repo_shortname, gemfile_location.strip('/'))
+      gemfile_content = self.gh_pull_file(repo_shortname, gemfile_location.strip('/'))
       dependencies_dict = parse_gemfile_content(gemfile_content)
 
       if 'ruby' not in dependencies_dict:
         ruby_version_location = posixpath.join(repo_config.get('gemfile_dir', ''), '.ruby-version')
-        ruby_version_content = self._gh_pull_file(repo_shortname, ruby_version_location.strip('/'))
+        ruby_version_content = self.gh_pull_file(repo_shortname, ruby_version_location.strip('/'))
         ruby_version_parts = parse_ruby_version_content(ruby_version_content)
         if ruby_version_parts:
           dependencies_dict['ruby'] = ruby_version_parts
