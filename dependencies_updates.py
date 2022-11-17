@@ -150,17 +150,17 @@ class DependencyUpdates:
       else:
         return ''
 
-    url = urllib.parse.urljoin('https://raw.githubusercontent.com', posixpath.join(
+    path = posixpath.join(
       self._config_dict['owner'],
       repo_shortname,
       self.gh_default_branch(repo_shortname),
       filepath
-    ))
+    )
 
-    return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'}).text or ''
+    return self.gh_api_call(path, 'raw.githubusercontent.com').text or ''
 
-  def gh_api_call(self, path):
-    url = urllib.parse.urljoin('https://api.github.com', path)
+  def gh_api_call(self, path, domain = 'api.github.com'):
+    url = urllib.parse.urljoin(f'https://{domain}', path)
     return requests.get(url, headers={'Authorization': f'Bearer {self._github_token}'})
 
   def gh_default_branch(self, repo_shortname):
