@@ -175,7 +175,8 @@ class DependencyUpdates:
     result = {}
 
     for repo_shortname, repo_config in self._config_dict['repos'].items():
-      gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), 'Gemfile.lock')
+      gemfile_name = repo_config.get('gemfile_name', 'Gemfile.lock')
+      gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), gemfile_name)
       gemfile_content = self.gh_pull_file(repo_shortname, gemfile_location.strip('/'))
       dependencies_dict = parse_gemfile_content(gemfile_content)
 
