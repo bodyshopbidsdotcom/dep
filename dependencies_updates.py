@@ -291,7 +291,7 @@ class DependencyUpdates:
     create_result_file(today_str, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
-      basename = f'{args.compare_to}_{today_str}'
+      basename = f'{today_str}_{args.compare_to}'
       content = '\n'.join(self.compare_results(result_old, result_new, args.strict))
       create_result_file(basename, content)
 
