@@ -89,8 +89,14 @@ def create_file(filepath, content_str):
     outfile.write(content_str)
   print(f'Wrote: {filepath}')
 
-def create_result_file(basename, content_str):
-  create_file(os.path.join(RESULTS_DIR, basename), content_str)
+def create_result_file(basename, content_str, extension = 'txt'):
+  filename = f'{basename}.{extension}'
+  idx = 1
+  while os.path.isfile(os.path.join(RESULTS_DIR, filename)):
+    filename = f'{basename}_{idx}.{extension}'
+    idx += 1
+
+  create_file(os.path.join(RESULTS_DIR, filename), content_str)
 
 '''
 [1, 0, 0]
@@ -282,10 +288,10 @@ class DependencyUpdates:
 
     result_new = self.build_new_result()
     today_str = datetime.date.today().strftime('%Y-%m-%d')
-    create_result_file(f'{today_str}.json', json.dumps(result_new, indent=2))
+    create_result_file(today_str, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
-      basename = f'{args.compare_to}_{today_str}.txt'
+      basename = f'{args.compare_to}_{today_str}'
       content = '\n'.join(self.compare_results(result_old, result_new, args.strict))
       create_result_file(basename, content)
 
