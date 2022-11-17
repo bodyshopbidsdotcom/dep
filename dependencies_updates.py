@@ -95,36 +95,47 @@ def create_result_file(basename, content_str):
 '''
 [1, 0, 0]
 [2, 0, 0]
-0
+=> [0, 1]
+
+[1, 0, 0]
+[5, 0, 0]
+=> [0, 4]
 
 [1, 0, 0]
 [1, 1, 0]
-1
+=> [1, 1]
 
 [1, 0, 0]
 [1, 0, 1]
-2
+=> [2, 1]
 
 [1, 2, 3]
 [1, 2, 3, 4]
-3
+=> [3, 4]
 
 [1, 2]
 [1, 2, 3, 4]
-2
+=> [2, 3]
+
+[1]
+[1, 0, 0, 0]
+=> [-1, 0]
 '''
 def compare_version_parts(version_parts_1, version_parts_2):
   if version_parts_1 == version_parts_2:
-    return -1
+    return [-1, 0]
 
   idx = 0
-  max_len = min(len(version_parts_1), len(version_parts_2))
+  max_len = max(len(version_parts_1), len(version_parts_2))
   while idx < max_len:
-    if version_parts_1[idx] != version_parts_2[idx]:
-      return idx
+    version_part_1 = version_parts_1[idx] if idx < len(version_parts_1) else 0
+    version_part_2 = version_parts_2[idx] if idx < len(version_parts_2) else 0
+
+    if version_part_1 != version_part_2:
+      return [idx, version_part_2 - version_part_1]
     idx += 1
 
-  return idx
+  return [-1, 0]
 
 class DependencyUpdates:
   def __init__(self):
@@ -235,12 +246,19 @@ class DependencyUpdates:
         if new_version_parts == old_version_parts:
           continue
 
-        diff = compare_version_parts(new_version_parts, old_version_parts)
+        diff, diff_amount = compare_version_parts(old_version_parts, new_version_parts)
+
+        if diff == -1:
+          # case when one version is [1, 3], and the other [1, 3, 0, 0,...]
+          continue
+
         diff_str = {0: 'Major', 1: 'Minor', 2: 'Patch'}.get(diff, 'Old')
+        upgrade_downgrade = 'downgrade' if diff_amount < 0 else 'upgrade'
         from_str = '.'.join([str(part) for part in old_version_parts])
         to_str = '.'.join([str(part) for part in new_version_parts])
+
         print_messages[diff_str].append(f'[{repo_shortname}] ' \
-          f'{diff_str} version update for {dependency_name}: {from_str} -> {to_str}'
+          f'{diff_str} version {upgrade_downgrade} for {dependency_name}: {from_str} -> {to_str}'
         )
 
       for print_message_type in print_message_types:
