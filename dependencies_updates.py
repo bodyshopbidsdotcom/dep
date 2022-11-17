@@ -21,7 +21,12 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), 'results')
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('-c', '--compare-to', help='Previous result to compare this run against')
-  parser.add_argument('-s', '--strict', default=False, action='store_true', help='Only look at dependencies in the follow_dependencies config list')
+  parser.add_argument('-s', '--strict',
+    default = False,
+    action = 'store_true',
+    help = 'Only look at dependencies in the follow_dependencies config list'
+  )
+
   sys.exit(DependencyUpdates().run(parser.parse_args()))
 
 def parse_gemfile_content(gemfile_lock_content):
@@ -175,11 +180,13 @@ class DependencyUpdates:
     ]
 
     for version_string_regex in version_string_regexes:
-      location = posixpath.join(repo_config.get('gemfile_dir', ''), version_string_regex[0]).strip('/')
+      location = posixpath.join(repo_config.get('gemfile_dir', ''), version_string_regex[0])
+      location = location.strip('/')
       file_content = self._gh_pull_file(repo_shortname, location) or ''
       result = re.search(version_string_regex[1], file_content, re.MULTILINE)
       if result is not None:
-        version_parts = [int(version_part) for version_part in result.group(1).strip('.').split('.')]
+        version_parts_str_list = result.group(1).strip('.').split('.')
+        version_parts = [int(version_part) for version_part in version_parts_str_list]
         while len(version_parts) < 3:
           version_parts.append(0)
 
@@ -213,12 +220,14 @@ class DependencyUpdates:
     result = {}
 
     for repo_shortname, repo_config in self._config_dict['repos'].items():
-      gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), 'Gemfile.lock').strip('/')
-      dependencies_dict = parse_gemfile_content(self._gh_pull_file(repo_shortname, gemfile_location))
+      gemfile_location = posixpath.join(repo_config.get('gemfile_dir', ''), 'Gemfile.lock')
+      gemfile_content = self._gh_pull_file(repo_shortname, gemfile_location.strip('/'))
+      dependencies_dict = parse_gemfile_content(gemfile_content)
 
       if 'ruby' not in dependencies_dict:
-        ruby_version_location = posixpath.join(repo_config.get('gemfile_dir', ''), '.ruby-version').strip('/')
-        ruby_version_parts = parse_ruby_version_content(self._gh_pull_file(repo_shortname, ruby_version_location))
+        ruby_version_location = posixpath.join(repo_config.get('gemfile_dir', ''), '.ruby-version')
+        ruby_version_content = self._gh_pull_file(repo_shortname, ruby_version_location.strip('/'))
+        ruby_version_parts = parse_ruby_version_content(ruby_version_content)
         if ruby_version_parts:
           dependencies_dict['ruby'] = ruby_version_parts
 
@@ -245,26 +254,38 @@ class DependencyUpdates:
       for print_message_type in print_message_types:
         print_messages[print_message_type] = []
 
-      for dependency_name in set(list(result_new[repo_shortname].keys()) + list(result_old[repo_shortname].keys())):
+      dependency_names = set(
+        list(result_new[repo_shortname].keys()) +
+        list(result_old[repo_shortname].keys())
+      )
+
+      for dependency_name in dependency_names:
         if strict and dependency_name not in self._config_dict.get('follow_dependencies', []):
           continue
 
         if dependency_name not in result_old[repo_shortname]:
-          print_messages['Added'].append(f'[{repo_shortname}] Added dependency: {dependency_name}')
+          msg = f'[{repo_shortname}] Added dependency: {dependency_name}'
+          print_messages['Added'].append(msg)
           continue
 
         if dependency_name not in result_new[repo_shortname]:
-          print_messages['Removed'].append(f'[{repo_shortname}] Removed dependency: {dependency_name}')
+          msg = f'[{repo_shortname}] Removed dependency: {dependency_name}'
+          print_messages['Removed'].append(msg)
           continue
 
-        if result_new[repo_shortname][dependency_name] == result_old[repo_shortname][dependency_name]:
+        new_version_parts = result_new[repo_shortname][dependency_name]
+        old_version_parts = result_old[repo_shortname][dependency_name]
+
+        if new_version_parts == old_version_parts:
           continue
 
-        diff = compare_version_parts(result_new[repo_shortname][dependency_name], result_old[repo_shortname][dependency_name])
+        diff = compare_version_parts(new_version_parts, old_version_parts)
         diff_str = {0: 'Major', 1: 'Minor', 2: 'Patch'}.get(diff, 'Old')
-        from_str = '.'.join([str(part) for part in result_old[repo_shortname][dependency_name]])
-        to_str = '.'.join([str(part) for part in result_new[repo_shortname][dependency_name]])
-        print_messages[diff_str].append(f'[{repo_shortname}] {diff_str} version update for {dependency_name}: {from_str} -> {to_str}')
+        from_str = '.'.join([str(part) for part in old_version_parts])
+        to_str = '.'.join([str(part) for part in new_version_parts])
+        print_messages[diff_str].append(f'[{repo_shortname}] ' \
+          f'{diff_str} version update for {dependency_name}: {from_str} -> {to_str}'
+        )
 
       for print_message_type in print_message_types:
         for print_message in print_messages[print_message_type]:
