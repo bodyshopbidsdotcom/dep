@@ -1,8 +1,7 @@
 # Example usage:
 # python dependencies_updates.py
-# python dependencies_updates.py > result.txt
-# python dependencies_updates.py -c 2022-10-24 > result.txt
-# python dependencies_updates.py -c 2022-10-03 -s > result.txt
+# python dependencies_updates.py -c 2022-10-24
+# python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
 
 import argparse
@@ -15,6 +14,9 @@ import json
 import urllib.parse
 import posixpath
 import datetime
+import pathlib
+
+RESULTS_DIR = os.path.join(os.path.dirname(__file__), 'results')
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -70,6 +72,20 @@ def parse_ruby_version_content(ruby_version_content):
     return version_parts
   else:
     return None
+
+def basenames_without_extension(dirpath, extension):
+  ret = {}
+  for file in pathlib.Path(dirpath).glob(f'*.{extension}'):
+    ret[os.path.splitext(os.path.basename(file))[0]] = file
+  return ret
+
+def create_file(filepath, content_str):
+  with open(filepath, 'w') as outfile:
+    outfile.write(content_str)
+  print(f'Wrote: {filepath}')
+
+def create_result_file(basename, content_str):
+  create_file(os.path.join(RESULTS_DIR, basename), content_str)
 
 '''
 [1, 0, 0]
@@ -208,12 +224,6 @@ class DependencyUpdates:
 
       result[repo_shortname] = dependencies_dict
 
-    today_str = datetime.date.today().strftime('%Y-%m-%d')
-    outputfile_path = f'results/{today_str}.json'
-    with open(outputfile_path, 'w') as outfile:
-      outfile.write(json.dumps(result, indent=2))
-    print(f'Wrote: {outputfile_path}')
-
     return result
 
   def compare_results(self, result_old, result_new, strict = False):
@@ -226,6 +236,7 @@ class DependencyUpdates:
       'Removed'
     ]
 
+    ret = []
     for repo_shortname, repo_config in self._config_dict['repos'].items():
       if (repo_shortname not in result_new) or (repo_shortname not in result_old):
         continue
@@ -257,24 +268,31 @@ class DependencyUpdates:
 
       for print_message_type in print_message_types:
         for print_message in print_messages[print_message_type]:
-          print(print_message)
+          ret.append(print_message)
+    return ret
 
   def run(self, args):
     result_old = None
 
     if len(args.compare_to or '') > 0:
-      prev_result_basenames = os.listdir('results')
-      if f'{args.compare_to}.json' in prev_result_basenames:
-        with open(f'results/{args.compare_to}.json', 'r') as file:
+      prev_result_basenames = basenames_without_extension(RESULTS_DIR, 'json')
+      if args.compare_to in prev_result_basenames:
+        with open(prev_result_basenames[args.compare_to], 'r') as file:
           result_old = json.load(file)
       else:
-        print('Possible options for compare-to argument: ' + ', '.join(prev_result_basenames))
+        sorted_options = list(prev_result_basenames.keys())
+        sorted_options.sort(reverse = True)
+        print('Possible options for compare-to argument:\n' + '\n'.join(sorted_options))
         return 1
 
     result_new = self.build_new_result()
+    today_str = datetime.date.today().strftime('%Y-%m-%d')
+    create_result_file(f'{today_str}.json', json.dumps(result_new, indent=2))
 
     if result_old is not None:
-      self.compare_results(result_old, result_new, args.strict)
+      basename = f'{args.compare_to}_{today_str}.txt'
+      content = '\n'.join(self.compare_results(result_old, result_new, args.strict))
+      create_result_file(basename, content)
 
     return 0
 

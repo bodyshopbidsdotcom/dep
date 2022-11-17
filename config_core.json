@@ -1,0 +1,10 @@
+{
+  "owner": "bodyshopbidsdotcom",
+  "force_debug_mode": false,
+  "repos": {
+    "snapsheet": { "gemfile_name": "Gemfile.lock" }
+  },
+  "debug": {
+    "repos_dir": "/Users/santiago"
+  }
+}
