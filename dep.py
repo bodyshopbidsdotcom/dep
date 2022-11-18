@@ -1,9 +1,7 @@
 # Example usage:
-# python dependencies_updates.py
-# python dependencies_updates.py -c 2022-10-24
-# python dependencies_updates.py -c 2022-10-03 -s
-# DEBUG=1 python dependencies_updates.py
-# TODO: rename script to `dependency_snapshots`
+# python dep.py
+# python dep.py -d 2022-10-24
+# DEBUG=1 python dep.py
 
 import argparse
 import sys

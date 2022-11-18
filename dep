@@ -1,2 +1,2 @@
 
-"${PYENV_ROOT}/versions/$(cat .python-version | tr -d '\n')/bin/python" dependencies_updates.py "$@"
+"${PYENV_ROOT}/versions/$(cat .python-version | tr -d '\n')/bin/python" dep.py "$@"
