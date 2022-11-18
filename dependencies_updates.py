@@ -91,16 +91,25 @@ def basenames_without_extension(dirpath, prefix='', extension='txt'):
 def create_file(filepath, content_str):
   with open(filepath, 'w') as outfile:
     outfile.write(content_str)
-  print(f'Wrote: {filepath}')
 
+'''
+Creates a file with the passed basename, content, and extension. If a file with the same name
+exists, it appends -v1, -v2, -v3, etc to the basename until no file with tha name exists.
+
+It returns the basename it ended up with
+'''
 def create_result_file(basename, content_str, extension = 'txt'):
-  filename = f'{basename}.{extension}'
+  new_basename = basename
+  filepath = os.path.join(RESULTS_DIR, f'{new_basename}.{extension}')
   idx = 1
-  while os.path.isfile(os.path.join(RESULTS_DIR, filename)):
-    filename = f'{basename}_{idx}.{extension}'
+  while os.path.isfile(filepath):
+    new_basename = f'{basename}-v{idx}'
+    filepath = os.path.join(RESULTS_DIR, f'{new_basename}.{extension}')
     idx += 1
 
-  create_file(os.path.join(RESULTS_DIR, filename), content_str)
+  create_file(filepath, content_str)
+  print(f'Wrote {os.path.relpath(filepath, start=ROOT_DIR)}')
+  return new_basename
 
 '''
 [1, 0, 0]
@@ -271,11 +280,12 @@ class DependencyUpdates:
 
   '''
   Returns an array with three elements:
-  1. First element is an integer exit code that can be used as an exit code from the script
-  2. Second element is a friendly description of the result.
+  1. An integer exit code that can be used as an exit code from the script
+  2. A friendly description of the result.
     - If the exit code is non-zero, this is a description of the error
     - Otherwise, it is information that can be sent to the user like config file used.
-  3. Third element is a dictionary if the exit code is zero, or None otherwise.
+  3. Config file basename without the extension, or None if the exit code is non-zero
+  4. A dictionary if the exit code is zero, or None otherwise.
   '''
   def create_config_dict(self):
     if len(self._args.config_file or '') > 0:
@@ -287,17 +297,19 @@ class DependencyUpdates:
         config_file_extension = '.json'
 
       if config_file_extension != '.json':
-        return [1, 'Non json config files are invalid', None]
+        return [1, 'Non json config files are invalid', None, None]
 
       potential_config_basenames = [config_file_basename]
     else:
       potential_config_basenames = ['config', 'config_sample']
 
     config_filepath = None
+    config_basename = None
     for potential_config_basename in potential_config_basenames:
       potential_config_filepath = os.path.join(ROOT_DIR, f'{potential_config_basename}.json')
       if os.path.isfile(potential_config_filepath):
         config_filepath = potential_config_filepath
+        config_basename = potential_config_basename
         break
 
     if config_filepath is None:
@@ -306,14 +318,14 @@ class DependencyUpdates:
       )
       potential_config_basenames.sort()
       msg = 'Possible options for --config-file argument:\n' + '\n'.join(potential_config_basenames)
-      return [1, msg, None]
+      return [1, msg, None, None]
 
     with open(config_filepath, 'r') as config_file:
       msg = f'Using config file {os.path.basename(config_filepath)}'
-      return [0, msg, json.load(config_file)]
+      return [0, msg, config_basename, json.load(config_file)]
 
   def run(self):
-    exit_code, msg, config_dict = self.create_config_dict()
+    exit_code, msg, config_basename, config_dict = self.create_config_dict()
     if msg is not None:
       print(msg)
     if exit_code != 0:
@@ -335,10 +347,11 @@ class DependencyUpdates:
 
     result_new = self.build_new_result()
     today_str = datetime.date.today().strftime('%Y-%m-%d')
-    create_result_file(today_str, json.dumps(result_new, indent=2), 'json')
+    basename = f'{config_basename}_{today_str}' # TODO
+    basename = create_result_file(basename, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
-      basename = f'{today_str}_{self._args.compare_to}'
+      basename = f'{basename}_{self._args.compare_to}'
       content = '\n'.join(self.compare_results(result_old, result_new, self._args.strict))
       create_result_file(basename, content)
 
