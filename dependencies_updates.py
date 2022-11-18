@@ -216,10 +216,14 @@ class DependencyUpdates:
 
   def compare_results(self, result_old, result_new, strict = False):
     print_message_types = [
-      'Major',
-      'Minor',
-      'Patch',
-      'Old',
+      'Major Upgrade',
+      'Major Downgrade',
+      'Minor Upgrade',
+      'Minor Downgrade',
+      'Patch Upgrade',
+      'Patch Downgrade',
+      'Old Upgrade',
+      'Old Downgrade',
       'Added',
       'Removed'
     ]
@@ -265,12 +269,13 @@ class DependencyUpdates:
           continue
 
         diff_str = {0: 'Major', 1: 'Minor', 2: 'Patch'}.get(diff, 'Old')
-        upgrade_downgrade = 'downgrade' if diff_amount < 0 else 'upgrade'
+        upgrade_downgrade = 'Downgrade' if diff_amount < 0 else 'Upgrade'
         from_str = '.'.join([str(part) for part in old_version_parts])
         to_str = '.'.join([str(part) for part in new_version_parts])
 
-        print_messages[diff_str].append(f'[{repo_shortname}] ' \
-          f'{diff_str} version {upgrade_downgrade} for {dependency_name}: {from_str} -> {to_str}'
+        print_message_type = f'{diff_str} {upgrade_downgrade}'
+        print_messages[print_message_type].append(f'[{repo_shortname}] ' \
+          f'{print_message_type} for {dependency_name}: {from_str} -> {to_str}'
         )
 
       for print_message_type in print_message_types:
