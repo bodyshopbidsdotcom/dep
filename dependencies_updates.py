@@ -3,6 +3,10 @@
 # python dependencies_updates.py -c 2022-10-24
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
+# TODO: add configs to their own `configs` folder
+# TODO: rename results folder to `snapshots`
+# TODO: add `diffs` folder to host the diff csvs and flip the dates in the names
+# TODO: rename script to `dependency_snapshots`
 
 import argparse
 from genericpath import isdir, isfile
@@ -24,11 +28,6 @@ RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('-c', '--compare-to', help='Previous result to compare this run against')
-  parser.add_argument('-s', '--strict',
-    default = False,
-    action = 'store_true',
-    help = 'Only look at dependencies in the follow_dependencies config list'
-  )
   parser.add_argument('-f', '--config-file',
     help='Config file basename (without extension, json assumed) to use'
   )
@@ -226,7 +225,7 @@ class DependencyUpdates:
   4. From Version. E.g. [4, 2, 2]
   5. To Version. E.g. [5, 1, 0]
   '''
-  def compare_results(self, result_old, result_new, strict = False):
+  def compare_results(self, result_old, result_new):
     ret_groups = [
       'Major Upgrade',
       'Major Downgrade',
@@ -255,9 +254,6 @@ class DependencyUpdates:
       )
 
       for dependency_name in dependency_names:
-        if strict and dependency_name not in self._config_dict.get('follow_dependencies', []):
-          continue
-
         new_version_parts = result_new[repo_shortname].get(dependency_name)
         old_version_parts = result_old[repo_shortname].get(dependency_name)
 
@@ -394,7 +390,7 @@ class DependencyUpdates:
         'From Version',
         'To Version'
       ])
-      for row in self.compare_results(result_old, result_new, self._args.strict):
+      for row in self.compare_results(result_old, result_new):
         writer.writerow(row)
 
       if self._args.compare_to.startswith(result_new_prefix):
