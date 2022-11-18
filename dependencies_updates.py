@@ -15,6 +15,8 @@ import urllib.parse
 import posixpath
 import datetime
 import pathlib
+import io
+import csv
 
 ROOT_DIR = os.path.dirname(__file__)
 RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
@@ -214,8 +216,18 @@ class DependencyUpdates:
 
     return result
 
+  '''
+  Returns a list that can be used to create a csv. Each element in this list is a list with 6
+  elements:
+  1. Repo Name. E.g. 'vice-backend'.
+  1. Dependency Name. E.g. 'rails'.
+  2. Update Type. One of 'Upgrade', 'Downgrade', 'Removal', 'Addition'.
+  3. Level. One of 'Major', 'Minor', 'Patch', 'Old'
+  4. From Version. E.g. [4, 2, 2]
+  5. To Version. E.g. [5, 1, 0]
+  '''
   def compare_results(self, result_old, result_new, strict = False):
-    print_message_types = [
+    ret_groups = [
       'Major Upgrade',
       'Major Downgrade',
       'Minor Upgrade',
@@ -224,8 +236,8 @@ class DependencyUpdates:
       'Patch Downgrade',
       'Old Upgrade',
       'Old Downgrade',
-      'Added',
-      'Removed'
+      'Addition',
+      'Removal'
     ]
 
     ret = []
@@ -233,9 +245,9 @@ class DependencyUpdates:
       if (repo_shortname not in result_new) or (repo_shortname not in result_old):
         continue
 
-      print_messages = {}
-      for print_message_type in print_message_types:
-        print_messages[print_message_type] = []
+      repo_updates = {}
+      for ret_group in ret_groups:
+        repo_updates[ret_group] = []
 
       dependency_names = set(
         list(result_new[repo_shortname].keys()) +
@@ -246,18 +258,30 @@ class DependencyUpdates:
         if strict and dependency_name not in self._config_dict.get('follow_dependencies', []):
           continue
 
+        new_version_parts = result_new[repo_shortname].get(dependency_name)
+        old_version_parts = result_old[repo_shortname].get(dependency_name)
+
         if dependency_name not in result_old[repo_shortname]:
-          msg = f'[{repo_shortname}] Added dependency: {dependency_name}'
-          print_messages['Added'].append(msg)
+          repo_updates['Addition'].append([
+            repo_shortname,
+            dependency_name,
+            'Addition',
+            'Major',
+            None,
+            new_version_parts
+          ])
           continue
 
         if dependency_name not in result_new[repo_shortname]:
-          msg = f'[{repo_shortname}] Removed dependency: {dependency_name}'
-          print_messages['Removed'].append(msg)
+          repo_updates['Removal'].append([
+            repo_shortname,
+            dependency_name,
+            'Removal',
+            'Major',
+            old_version_parts,
+            None
+          ])
           continue
-
-        new_version_parts = result_new[repo_shortname][dependency_name]
-        old_version_parts = result_old[repo_shortname][dependency_name]
 
         if new_version_parts == old_version_parts:
           continue
@@ -270,17 +294,20 @@ class DependencyUpdates:
 
         diff_str = {0: 'Major', 1: 'Minor', 2: 'Patch'}.get(diff, 'Old')
         upgrade_downgrade = 'Downgrade' if diff_amount < 0 else 'Upgrade'
-        from_str = '.'.join([str(part) for part in old_version_parts])
-        to_str = '.'.join([str(part) for part in new_version_parts])
+        ret_group = f'{diff_str} {upgrade_downgrade}'
 
-        print_message_type = f'{diff_str} {upgrade_downgrade}'
-        print_messages[print_message_type].append(f'[{repo_shortname}] ' \
-          f'{print_message_type} for {dependency_name}: {from_str} -> {to_str}'
-        )
+        repo_updates[ret_group].append([
+          repo_shortname,
+          dependency_name,
+          upgrade_downgrade,
+          diff_str,
+          old_version_parts,
+          new_version_parts
+        ])
 
-      for print_message_type in print_message_types:
-        for print_message in print_messages[print_message_type]:
-          ret.append(print_message)
+      for ret_group in ret_groups:
+        for row in repo_updates[ret_group]:
+          ret.append(row)
     return ret
 
   '''
@@ -356,9 +383,20 @@ class DependencyUpdates:
     basename = create_result_file(basename, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
-      basename = f'{basename}_{self._args.compare_to}'
-      content = '\n'.join(self.compare_results(result_old, result_new, self._args.strict))
-      create_result_file(basename, content)
+      output = io.StringIO()
+      writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC)
+      writer.writerow([
+        'Repo Name',
+        'Dependency Name',
+        'Update Type',
+        'Level',
+        'From Version',
+        'To Version'
+      ])
+      for row in self.compare_results(result_old, result_new, self._args.strict):
+        writer.writerow(row)
+
+      create_result_file(f'{basename}_{self._args.compare_to}', output.getvalue(), 'csv')
 
     return 0
 
