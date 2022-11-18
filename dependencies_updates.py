@@ -3,7 +3,6 @@
 # python dependencies_updates.py -c 2022-10-24
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
-# TODO: add configs to their own `configs` folder
 # TODO: rename results folder to `snapshots`
 # TODO: add `diffs` folder to host the diff csvs and flip the dates in the names
 # TODO: rename script to `dependency_snapshots`
@@ -24,6 +23,7 @@ import csv
 
 ROOT_DIR = os.path.dirname(__file__)
 RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
+CONFIGS_DIR = os.path.join(ROOT_DIR, 'configs')
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -329,12 +329,12 @@ class DependencyUpdates:
 
       potential_config_basenames = [config_file_basename]
     else:
-      potential_config_basenames = ['config', 'config_sample']
+      potential_config_basenames = ['default', 'default_sample']
 
     config_filepath = None
     config_basename = None
     for potential_config_basename in potential_config_basenames:
-      potential_config_filepath = os.path.join(ROOT_DIR, f'{potential_config_basename}.json')
+      potential_config_filepath = os.path.join(CONFIGS_DIR, f'{potential_config_basename}.json')
       if os.path.isfile(potential_config_filepath):
         config_filepath = potential_config_filepath
         config_basename = potential_config_basename
@@ -342,7 +342,7 @@ class DependencyUpdates:
 
     if config_filepath is None:
       potential_config_basenames = list(
-        basenames_without_extension(ROOT_DIR, 'config', 'json').keys()
+        basenames_without_extension(CONFIGS_DIR, extension='json').keys()
       )
       potential_config_basenames.sort()
       msg = 'Possible options for --config-file argument:\n' + '\n'.join(potential_config_basenames)
