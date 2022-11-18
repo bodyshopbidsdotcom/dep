@@ -4,7 +4,6 @@
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
 # TODO: rename results folder to `snapshots`
-# TODO: change flag from -c to -d for `diff`
 # TODO: change flag from -f to -c for `config-file`
 # TODO: rename script to `dependency_snapshots`
 
@@ -28,7 +27,7 @@ CONFIGS_DIR = os.path.join(ROOT_DIR, 'configs')
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('-c', '--compare-to', help='Previous result to compare this run against')
+  parser.add_argument('-d', '--diff-against', help='Previous result to diff this snapshot against')
   parser.add_argument('-f', '--config-file',
     help='Config file basename (without extension, json assumed) to use'
   )
@@ -140,7 +139,7 @@ def create_result_file(dir, basename, content_str, extension = 'txt'):
 [1, 0, 0, 0]
 => [-1, 0]
 '''
-def compare_version_parts(version_parts_1, version_parts_2):
+def diff_version_parts(version_parts_1, version_parts_2):
   if version_parts_1 == version_parts_2:
     return [-1, 0]
 
@@ -224,7 +223,7 @@ class DependencyUpdates:
   4. From Version. E.g. [4, 2, 2]
   5. To Version. E.g. [5, 1, 0]
   '''
-  def compare_results(self, result_old, result_new):
+  def diff_results(self, result_old, result_new):
     ret_groups = [
       'Major Upgrade',
       'Major Downgrade',
@@ -281,7 +280,7 @@ class DependencyUpdates:
         if new_version_parts == old_version_parts:
           continue
 
-        diff, diff_amount = compare_version_parts(old_version_parts, new_version_parts)
+        diff, diff_amount = diff_version_parts(old_version_parts, new_version_parts)
 
         if diff == -1:
           # case when one version is [1, 3], and the other [1, 3, 0, 0,...]
@@ -361,15 +360,15 @@ class DependencyUpdates:
 
     result_old = None
 
-    if len(self._args.compare_to or '') > 0:
+    if len(self._args.diff_against or '') > 0:
       prev_result_basenames = basenames_without_extension(RESULTS_DIR, extension='json')
-      if self._args.compare_to in prev_result_basenames:
-        with open(prev_result_basenames[self._args.compare_to], 'r') as file:
+      if self._args.diff_against in prev_result_basenames:
+        with open(prev_result_basenames[self._args.diff_against], 'r') as file:
           result_old = json.load(file)
       else:
         sorted_options = list(prev_result_basenames.keys())
         sorted_options.sort(reverse = True)
-        print('Possible options for --compare-to argument:\n' + '\n'.join(sorted_options))
+        print('Possible options for --diff-against argument:\n' + '\n'.join(sorted_options))
         return 1
 
     result_new = self.build_new_result()
@@ -389,13 +388,13 @@ class DependencyUpdates:
         'From Version',
         'To Version'
       ])
-      for row in self.compare_results(result_old, result_new):
+      for row in self.diff_results(result_old, result_new):
         writer.writerow(row)
 
-      if self._args.compare_to.startswith(result_new_prefix):
-        basename = f'{self._args.compare_to}_{basename[len(result_new_prefix):]}'
+      if self._args.diff_against.startswith(result_new_prefix):
+        basename = f'{self._args.diff_against}_{basename[len(result_new_prefix):]}'
       else:
-        basename = f'{self._args.compare_to}_{basename}'
+        basename = f'{self._args.diff_against}_{basename}'
       create_result_file(DIFFS_DIR, basename, output.getvalue(), 'csv')
 
     return 0
