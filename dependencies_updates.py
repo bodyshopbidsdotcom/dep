@@ -4,11 +4,11 @@
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
 # TODO: rename results folder to `snapshots`
-# TODO: add `diffs` folder to host the diff csvs and flip the dates in the names
+# TODO: change flag from -c to -d for `diff`
+# TODO: change flag from -f to -c for `config-file`
 # TODO: rename script to `dependency_snapshots`
 
 import argparse
-from genericpath import isdir, isfile
 import sys
 import requests
 import os
@@ -23,6 +23,7 @@ import csv
 
 ROOT_DIR = os.path.dirname(__file__)
 RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
+DIFFS_DIR = os.path.join(ROOT_DIR, 'diffs')
 CONFIGS_DIR = os.path.join(ROOT_DIR, 'configs')
 
 def run():
@@ -89,26 +90,24 @@ def basenames_without_extension(dirpath, prefix='', extension='txt'):
     ret[os.path.splitext(os.path.basename(file))[0]] = file
   return ret
 
-def create_file(filepath, content_str):
-  with open(filepath, 'w') as outfile:
-    outfile.write(content_str)
-
 '''
 Creates a file with the passed basename, content, and extension. If a file with the same name
 exists, it appends -v1, -v2, -v3, etc to the basename until no file with tha name exists.
 
 It returns the basename it ended up with
 '''
-def create_result_file(basename, content_str, extension = 'txt'):
+def create_result_file(dir, basename, content_str, extension = 'txt'):
   new_basename = basename
-  filepath = os.path.join(RESULTS_DIR, f'{new_basename}.{extension}')
+  filepath = os.path.join(dir, f'{new_basename}.{extension}')
   idx = 1
   while os.path.isfile(filepath):
     new_basename = f'{basename}-v{idx}'
-    filepath = os.path.join(RESULTS_DIR, f'{new_basename}.{extension}')
+    filepath = os.path.join(dir, f'{new_basename}.{extension}')
     idx += 1
 
-  create_file(filepath, content_str)
+  with open(filepath, 'w') as outfile:
+    outfile.write(content_str)
+
   print(f'Wrote {os.path.relpath(filepath, start=ROOT_DIR)}')
   return new_basename
 
@@ -377,7 +376,7 @@ class DependencyUpdates:
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     result_new_prefix = f'{config_basename}_'
     basename = f'{result_new_prefix}{today_str}'
-    basename = create_result_file(basename, json.dumps(result_new, indent=2), 'json')
+    basename = create_result_file(RESULTS_DIR, basename, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
       output = io.StringIO()
@@ -394,10 +393,10 @@ class DependencyUpdates:
         writer.writerow(row)
 
       if self._args.compare_to.startswith(result_new_prefix):
-        basename = f'{basename}_{self._args.compare_to[len(result_new_prefix):]}'
+        basename = f'{self._args.compare_to}_{basename[len(result_new_prefix):]}'
       else:
-        basename = f'{basename}_{self._args.compare_to}'
-      create_result_file(basename, output.getvalue(), 'csv')
+        basename = f'{self._args.compare_to}_{basename}'
+      create_result_file(DIFFS_DIR, basename, output.getvalue(), 'csv')
 
     return 0
 
