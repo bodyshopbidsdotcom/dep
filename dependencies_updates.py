@@ -3,8 +3,8 @@
 # python dependencies_updates.py -c 2022-10-24
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
-# TODO: change flag from -f to -c for `config-file`
 # TODO: rename script to `dependency_snapshots`
+# TODO: Make diffs and snapshots folder if they don't exist to get rid of the .keep files
 
 import argparse
 import sys
@@ -29,7 +29,7 @@ def run():
   parser.add_argument('-d', '--diff-against',
     help='Previous snapshot to diff this snapshot against'
   )
-  parser.add_argument('-f', '--config-file',
+  parser.add_argument('-c', '--config-file',
     help='Config file basename (without extension, json assumed) to use'
   )
 
