@@ -4,7 +4,6 @@
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
 # TODO: rename script to `dependency_snapshots`
-# TODO: Make diffs and snapshots folder if they don't exist to get rid of the .keep files
 
 import argparse
 import sys
@@ -99,6 +98,7 @@ It returns the basename it ended up with
 def create_result_file(dir, basename, content_str, extension = 'txt'):
   new_basename = basename
   filepath = os.path.join(dir, f'{new_basename}.{extension}')
+  os.makedirs(dir, exist_ok=True)
   idx = 1
   while os.path.isfile(filepath):
     new_basename = f'{basename}-v{idx}'
