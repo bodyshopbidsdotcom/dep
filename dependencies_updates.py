@@ -3,7 +3,6 @@
 # python dependencies_updates.py -c 2022-10-24
 # python dependencies_updates.py -c 2022-10-03 -s
 # DEBUG=1 python dependencies_updates.py
-# TODO: rename results folder to `snapshots`
 # TODO: change flag from -f to -c for `config-file`
 # TODO: rename script to `dependency_snapshots`
 
@@ -21,13 +20,15 @@ import io
 import csv
 
 ROOT_DIR = os.path.dirname(__file__)
-RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
+SNAPSHOTS_DIR = os.path.join(ROOT_DIR, 'snapshots')
 DIFFS_DIR = os.path.join(ROOT_DIR, 'diffs')
 CONFIGS_DIR = os.path.join(ROOT_DIR, 'configs')
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('-d', '--diff-against', help='Previous result to diff this snapshot against')
+  parser.add_argument('-d', '--diff-against',
+    help='Previous snapshot to diff this snapshot against'
+  )
   parser.add_argument('-f', '--config-file',
     help='Config file basename (without extension, json assumed) to use'
   )
@@ -193,8 +194,8 @@ class DependencyUpdates:
 
     return self._default_branches[repo_shortname]
 
-  def build_new_result(self):
-    result = {}
+  def build_new_snapshot(self):
+    snapshot = {}
 
     for repo_shortname, repo_config in self._config_dict['repos'].items():
       gemfile_name = repo_config.get('gemfile_name', 'Gemfile.lock')
@@ -209,9 +210,9 @@ class DependencyUpdates:
         if ruby_version_parts:
           dependencies_dict['ruby'] = ruby_version_parts
 
-      result[repo_shortname] = dependencies_dict
+      snapshot[repo_shortname] = dependencies_dict
 
-    return result
+    return snapshot
 
   '''
   Returns a list that can be used to create a csv. Each element in this list is a list with 6
@@ -223,7 +224,7 @@ class DependencyUpdates:
   4. From Version. E.g. [4, 2, 2]
   5. To Version. E.g. [5, 1, 0]
   '''
-  def diff_results(self, result_old, result_new):
+  def diff_snapshots(self, snapshot_old, snapshot_new):
     ret_groups = [
       'Major Upgrade',
       'Major Downgrade',
@@ -239,7 +240,7 @@ class DependencyUpdates:
 
     ret = []
     for repo_shortname, repo_config in self._config_dict['repos'].items():
-      if (repo_shortname not in result_new) or (repo_shortname not in result_old):
+      if (repo_shortname not in snapshot_new) or (repo_shortname not in snapshot_old):
         continue
 
       repo_updates = {}
@@ -247,15 +248,15 @@ class DependencyUpdates:
         repo_updates[ret_group] = []
 
       dependency_names = set(
-        list(result_new[repo_shortname].keys()) +
-        list(result_old[repo_shortname].keys())
+        list(snapshot_new[repo_shortname].keys()) +
+        list(snapshot_old[repo_shortname].keys())
       )
 
       for dependency_name in dependency_names:
-        new_version_parts = result_new[repo_shortname].get(dependency_name)
-        old_version_parts = result_old[repo_shortname].get(dependency_name)
+        new_version_parts = snapshot_new[repo_shortname].get(dependency_name)
+        old_version_parts = snapshot_old[repo_shortname].get(dependency_name)
 
-        if dependency_name not in result_old[repo_shortname]:
+        if dependency_name not in snapshot_old[repo_shortname]:
           repo_updates['Addition'].append([
             repo_shortname,
             dependency_name,
@@ -266,7 +267,7 @@ class DependencyUpdates:
           ])
           continue
 
-        if dependency_name not in result_new[repo_shortname]:
+        if dependency_name not in snapshot_new[repo_shortname]:
           repo_updates['Removal'].append([
             repo_shortname,
             dependency_name,
@@ -358,26 +359,26 @@ class DependencyUpdates:
       return exit_code
     self._config_dict = config_dict
 
-    result_old = None
+    snapshot_old = None
 
     if len(self._args.diff_against or '') > 0:
-      prev_result_basenames = basenames_without_extension(RESULTS_DIR, extension='json')
-      if self._args.diff_against in prev_result_basenames:
-        with open(prev_result_basenames[self._args.diff_against], 'r') as file:
-          result_old = json.load(file)
+      prev_snapshots_basenames = basenames_without_extension(SNAPSHOTS_DIR, extension='json')
+      if self._args.diff_against in prev_snapshots_basenames:
+        with open(prev_snapshots_basenames[self._args.diff_against], 'r') as file:
+          snapshot_old = json.load(file)
       else:
-        sorted_options = list(prev_result_basenames.keys())
+        sorted_options = list(prev_snapshots_basenames.keys())
         sorted_options.sort(reverse = True)
         print('Possible options for --diff-against argument:\n' + '\n'.join(sorted_options))
         return 1
 
-    result_new = self.build_new_result()
+    snapshot_new = self.build_new_snapshot()
     today_str = datetime.date.today().strftime('%Y-%m-%d')
-    result_new_prefix = f'{config_basename}_'
-    basename = f'{result_new_prefix}{today_str}'
-    basename = create_result_file(RESULTS_DIR, basename, json.dumps(result_new, indent=2), 'json')
+    snapshot_new_prefix = f'{config_basename}_'
+    basename = f'{snapshot_new_prefix}{today_str}'
+    basename = create_result_file(SNAPSHOTS_DIR, basename, json.dumps(snapshot_new, indent=2), 'json')
 
-    if result_old is not None:
+    if snapshot_old is not None:
       output = io.StringIO()
       writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC)
       writer.writerow([
@@ -388,11 +389,11 @@ class DependencyUpdates:
         'From Version',
         'To Version'
       ])
-      for row in self.diff_results(result_old, result_new):
+      for row in self.diff_snapshots(snapshot_old, snapshot_new):
         writer.writerow(row)
 
-      if self._args.diff_against.startswith(result_new_prefix):
-        basename = f'{self._args.diff_against}_{basename[len(result_new_prefix):]}'
+      if self._args.diff_against.startswith(snapshot_new_prefix):
+        basename = f'{self._args.diff_against}_{basename[len(snapshot_new_prefix):]}'
       else:
         basename = f'{self._args.diff_against}_{basename}'
       create_result_file(DIFFS_DIR, basename, output.getvalue(), 'csv')
