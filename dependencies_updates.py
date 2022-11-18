@@ -379,7 +379,8 @@ class DependencyUpdates:
 
     result_new = self.build_new_result()
     today_str = datetime.date.today().strftime('%Y-%m-%d')
-    basename = f'{config_basename}_{today_str}' # TODO
+    result_new_prefix = f'{config_basename}_'
+    basename = f'{result_new_prefix}{today_str}'
     basename = create_result_file(basename, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
@@ -396,7 +397,11 @@ class DependencyUpdates:
       for row in self.compare_results(result_old, result_new, self._args.strict):
         writer.writerow(row)
 
-      create_result_file(f'{basename}_{self._args.compare_to}', output.getvalue(), 'csv')
+      if self._args.compare_to.startswith(result_new_prefix):
+        basename = f'{basename}_{self._args.compare_to[len(result_new_prefix):]}'
+      else:
+        basename = f'{basename}_{self._args.compare_to}'
+      create_result_file(basename, output.getvalue(), 'csv')
 
     return 0
 
