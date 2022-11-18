@@ -16,7 +16,8 @@ import posixpath
 import datetime
 import pathlib
 
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), 'results')
+ROOT_DIR = os.path.dirname(__file__)
+RESULTS_DIR = os.path.join(ROOT_DIR, 'results')
 
 def run():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -26,8 +27,11 @@ def run():
     action = 'store_true',
     help = 'Only look at dependencies in the follow_dependencies config list'
   )
+  parser.add_argument('-f', '--config-file',
+    help='Config file basename (without extension, json assumed) to use'
+  )
 
-  sys.exit(DependencyUpdates().run(parser.parse_args()))
+  sys.exit(DependencyUpdates(parser.parse_args()).run())
 
 def parse_gemfile_content(gemfile_lock_content):
   ret = {}
@@ -78,9 +82,9 @@ def parse_ruby_version_content(ruby_version_content):
   else:
     return None
 
-def basenames_without_extension(dirpath, extension):
+def basenames_without_extension(dirpath, prefix='', extension='txt'):
   ret = {}
-  for file in pathlib.Path(dirpath).glob(f'*.{extension}'):
+  for file in pathlib.Path(dirpath).glob(f'{prefix}*.{extension}'):
     ret[os.path.splitext(os.path.basename(file))[0]] = file
   return ret
 
@@ -144,19 +148,12 @@ def compare_version_parts(version_parts_1, version_parts_2):
   return [-1, 0]
 
 class DependencyUpdates:
-  def __init__(self):
+  def __init__(self, args):
     super(self.__class__) # TODO is this necessary? update GemfileLockParser if so.
+    self._args = args
     self._config_dict = None
     self._default_branches = {}
     self._github_token = os.environ.get('GITHUB_TOKEN')
-
-    config_file = 'config.json'
-    if not os.path.isfile(config_file):
-      config_file = 'config_sample.json'
-
-    self._config_dict = None
-    with open(config_file, 'r') as config_file:
-      self._config_dict = json.load(config_file)
 
   def gh_pull_file(self, repo_shortname, filepath):
     if len(os.environ.get('DEBUG', '')) > 0 or self._config_dict.get('force_debug_mode', False):
@@ -272,18 +269,68 @@ class DependencyUpdates:
           ret.append(print_message)
     return ret
 
-  def run(self, args):
+  '''
+  Returns an array with three elements:
+  1. First element is an integer exit code that can be used as an exit code from the script
+  2. Second element is a friendly description of the result.
+    - If the exit code is non-zero, this is a description of the error
+    - Otherwise, it is information that can be sent to the user like config file used.
+  3. Third element is a dictionary if the exit code is zero, or None otherwise.
+  '''
+  def create_config_dict(self):
+    if len(self._args.config_file or '') > 0:
+      config_file_basename, config_file_extension = os.path.splitext(
+        os.path.basename(self._args.config_file)
+      )
+
+      if len(config_file_extension) <= 0:
+        config_file_extension = '.json'
+
+      if config_file_extension != '.json':
+        return [1, 'Non json config files are invalid', None]
+
+      potential_config_basenames = [config_file_basename]
+    else:
+      potential_config_basenames = ['config', 'config_sample']
+
+    config_filepath = None
+    for potential_config_basename in potential_config_basenames:
+      potential_config_filepath = os.path.join(ROOT_DIR, f'{potential_config_basename}.json')
+      if os.path.isfile(potential_config_filepath):
+        config_filepath = potential_config_filepath
+        break
+
+    if config_filepath is None:
+      potential_config_basenames = list(
+        basenames_without_extension(ROOT_DIR, 'config', 'json').keys()
+      )
+      potential_config_basenames.sort()
+      msg = 'Possible options for --config-file argument:\n' + '\n'.join(potential_config_basenames)
+      return [1, msg, None]
+
+    with open(config_filepath, 'r') as config_file:
+      msg = f'Using config file {os.path.basename(config_filepath)}'
+      return [0, msg, json.load(config_file)]
+
+  def run(self):
+    exit_code, msg, config_dict = self.create_config_dict()
+    if msg is not None:
+      print(msg)
+    if exit_code != 0:
+      return exit_code
+    self._config_dict = config_dict
+
     result_old = None
 
-    if len(args.compare_to or '') > 0:
-      prev_result_basenames = basenames_without_extension(RESULTS_DIR, 'json')
-      if args.compare_to in prev_result_basenames:
-        with open(prev_result_basenames[args.compare_to], 'r') as file:
+    if len(self._args.compare_to or '') > 0:
+      prev_result_basenames = basenames_without_extension(RESULTS_DIR, extension='json')
+      if self._args.compare_to in prev_result_basenames:
+        with open(prev_result_basenames[self._args.compare_to], 'r') as file:
           result_old = json.load(file)
       else:
         sorted_options = list(prev_result_basenames.keys())
         sorted_options.sort(reverse = True)
-        print('Possible options for compare-to argument:\n' + '\n'.join(sorted_options))
+        print('Possible options for --compare-to argument:\n' + '\n'.join(sorted_options))
         return 1
 
     result_new = self.build_new_result()
@@ -291,8 +338,8 @@ class DependencyUpdates:
     create_result_file(today_str, json.dumps(result_new, indent=2), 'json')
 
     if result_old is not None:
-      basename = f'{today_str}_{args.compare_to}'
-      content = '\n'.join(self.compare_results(result_old, result_new, args.strict))
+      basename = f'{today_str}_{self._args.compare_to}'
+      content = '\n'.join(self.compare_results(result_old, result_new, self._args.strict))
       create_result_file(basename, content)
 
     return 0
