@@ -1,2 +1,1 @@
-
-"${PYENV_ROOT}/versions/$(cat .python-version | tr -d '\n')/bin/python" dep.py "$@"
+python dep.py "$@"

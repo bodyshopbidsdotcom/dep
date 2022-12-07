@@ -326,7 +326,7 @@ class DependencyUpdates:
 
       potential_config_basenames = [config_file_basename]
     else:
-      potential_config_basenames = ['default', 'default_sample']
+      potential_config_basenames = ['default']
 
     config_filepath = None
     config_basename = None
