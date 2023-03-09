@@ -165,8 +165,9 @@ class DependencyUpdates:
   def gh_pull_file(self, repo_shortname, filepath):
     if len(os.environ.get('DEBUG', '')) > 0 or self._config_dict.get('force_debug_mode', False):
       directory = os.path.join(self._config_dict['debug']['repos_dir'], repo_shortname)
-      if os.path.isdir(directory):
-        with open(os.path.join(directory, filepath), 'r') as file:
+      complete_filepath = os.path.join(directory, filepath)
+      if os.path.isdir(directory) and os.path.isfile(complete_filepath):
+        with open(complete_filepath, 'r') as file:
           return file.read()
       else:
         return ''
